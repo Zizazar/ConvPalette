@@ -3,7 +3,7 @@
 use serde::Serialize;
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -68,7 +68,9 @@ fn resolve_tool(app: &AppHandle, base: &str) -> Option<PathBuf> {
     }
     // 2. PATH — проверяем, что бинарник запускается.
     let mut cmd = Command::new(exe_name(base));
-    cmd.arg("-version").stdout(Stdio::null()).stderr(Stdio::null());
+    cmd.arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     hide_console_cmd(&mut cmd);
     if cmd.status().map(|s| s.success()).unwrap_or(false) {
         return Some(PathBuf::from(exe_name(base)));
@@ -133,11 +135,7 @@ pub fn download_ffmpeg(app: &AppHandle) -> Result<(), String> {
             let pct = (downloaded as f64 / total as f64 * 100.0).floor();
             if pct as i64 != last_pct {
                 last_pct = pct as i64;
-                emit(
-                    "progress",
-                    format!("Загрузка ffmpeg… {pct:.0}%"),
-                    Some(pct),
-                );
+                emit("progress", format!("Загрузка ffmpeg… {pct:.0}%"), Some(pct));
             }
         } else {
             emit(
@@ -164,7 +162,7 @@ pub fn download_ffmpeg(app: &AppHandle) -> Result<(), String> {
 }
 
 /// Достать из zip только ffmpeg.exe и ffprobe.exe в bin_dir (без структуры папок).
-fn extract_tools(zip_path: &PathBuf, bin_dir: &PathBuf) -> Result<(), String> {
+fn extract_tools(zip_path: &Path, bin_dir: &Path) -> Result<(), String> {
     let file = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
     let wanted = [exe_name("ffmpeg"), exe_name("ffprobe")];
@@ -255,12 +253,20 @@ pub fn run_single(app: &AppHandle, ffmpeg: &PathBuf, input: &str, args: &[String
 
     match status {
         Ok(s) if s.success() => {
-            emit("done", format!("Готово: {output}"), Some(output.to_string()));
+            emit(
+                "done",
+                format!("Готово: {output}"),
+                Some(output.to_string()),
+            );
         }
         _ if cancelled => {
             emit("cancelled", "Отменено".into(), None);
         }
-        Ok(s) => emit("error", format!("ffmpeg завершился с кодом {s}\n{diag}"), None),
+        Ok(s) => emit(
+            "error",
+            format!("ffmpeg завершился с кодом {s}\n{diag}"),
+            None,
+        ),
         Err(e) => emit("error", format!("Ошибка процесса: {e}"), None),
     }
 }

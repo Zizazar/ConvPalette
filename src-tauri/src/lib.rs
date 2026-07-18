@@ -148,7 +148,11 @@ const MAX_PARALLEL: usize = 2;
 /// Прогнать задачи (input, args, output) через пул из MAX_PARALLEL воркеров.
 /// Отмена работает как раньше: cancel_all убивает запущенные процессы, а
 /// run_single для ещё не начатых задач сразу шлёт событие "cancelled".
-fn spawn_queue(app: &AppHandle, ffmpeg: std::path::PathBuf, jobs: Vec<(String, Vec<String>, String)>) {
+fn spawn_queue(
+    app: &AppHandle,
+    ffmpeg: std::path::PathBuf,
+    jobs: Vec<(String, Vec<String>, String)>,
+) {
     use std::collections::VecDeque;
     use std::sync::Arc;
 
@@ -168,8 +172,9 @@ fn spawn_queue(app: &AppHandle, ffmpeg: std::path::PathBuf, jobs: Vec<(String, V
 
 #[tauri::command]
 fn start_conversion(app: AppHandle, preset_id: String, paths: Vec<String>) -> Result<(), String> {
-    let ffmpeg = ffmpeg::resolve_ffmpeg(&app)
-        .ok_or_else(|| "ffmpeg не найден. Установите ffmpeg или скачайте его в приложении.".to_string())?;
+    let ffmpeg = ffmpeg::resolve_ffmpeg(&app).ok_or_else(|| {
+        "ffmpeg не найден. Установите ffmpeg или скачайте его в приложении.".to_string()
+    })?;
     reset_jobs(&app);
     let cfg = out_cfg(&app);
 
@@ -337,7 +342,15 @@ async fn ai_fix(
         let cfg = settings::load(&app);
         let api_key = settings::get_api_key(&cfg.provider);
         let files = probe_files(&app, &paths);
-        ai::generate_fix(&cfg, api_key, &query, &files, &prev_options, &target_ext, &error)
+        ai::generate_fix(
+            &cfg,
+            api_key,
+            &query,
+            &files,
+            &prev_options,
+            &target_ext,
+            &error,
+        )
     })
     .await
     .map_err(|e| e.to_string())?
@@ -554,18 +567,41 @@ fn parse_hotkey(spec: &str) -> Option<tauri_plugin_global_shortcut::Shortcut> {
             t if t.len() == 1 => {
                 let ch = t.chars().next()?;
                 code = Some(match ch {
-                    'a' => Code::KeyA, 'b' => Code::KeyB, 'c' => Code::KeyC,
-                    'd' => Code::KeyD, 'e' => Code::KeyE, 'f' => Code::KeyF,
-                    'g' => Code::KeyG, 'h' => Code::KeyH, 'i' => Code::KeyI,
-                    'j' => Code::KeyJ, 'k' => Code::KeyK, 'l' => Code::KeyL,
-                    'm' => Code::KeyM, 'n' => Code::KeyN, 'o' => Code::KeyO,
-                    'p' => Code::KeyP, 'q' => Code::KeyQ, 'r' => Code::KeyR,
-                    's' => Code::KeyS, 't' => Code::KeyT, 'u' => Code::KeyU,
-                    'v' => Code::KeyV, 'w' => Code::KeyW, 'x' => Code::KeyX,
-                    'y' => Code::KeyY, 'z' => Code::KeyZ,
-                    '0' => Code::Digit0, '1' => Code::Digit1, '2' => Code::Digit2,
-                    '3' => Code::Digit3, '4' => Code::Digit4, '5' => Code::Digit5,
-                    '6' => Code::Digit6, '7' => Code::Digit7, '8' => Code::Digit8,
+                    'a' => Code::KeyA,
+                    'b' => Code::KeyB,
+                    'c' => Code::KeyC,
+                    'd' => Code::KeyD,
+                    'e' => Code::KeyE,
+                    'f' => Code::KeyF,
+                    'g' => Code::KeyG,
+                    'h' => Code::KeyH,
+                    'i' => Code::KeyI,
+                    'j' => Code::KeyJ,
+                    'k' => Code::KeyK,
+                    'l' => Code::KeyL,
+                    'm' => Code::KeyM,
+                    'n' => Code::KeyN,
+                    'o' => Code::KeyO,
+                    'p' => Code::KeyP,
+                    'q' => Code::KeyQ,
+                    'r' => Code::KeyR,
+                    's' => Code::KeyS,
+                    't' => Code::KeyT,
+                    'u' => Code::KeyU,
+                    'v' => Code::KeyV,
+                    'w' => Code::KeyW,
+                    'x' => Code::KeyX,
+                    'y' => Code::KeyY,
+                    'z' => Code::KeyZ,
+                    '0' => Code::Digit0,
+                    '1' => Code::Digit1,
+                    '2' => Code::Digit2,
+                    '3' => Code::Digit3,
+                    '4' => Code::Digit4,
+                    '5' => Code::Digit5,
+                    '6' => Code::Digit6,
+                    '7' => Code::Digit7,
+                    '8' => Code::Digit8,
                     '9' => Code::Digit9,
                     _ => return None,
                 });
@@ -592,7 +628,12 @@ fn apply_hotkey(app: &AppHandle, spec: &str) -> Result<Option<String>, String> {
 
     // Желаемый + запасные (основной часто занят другими программами).
     let mut specs = vec![spec.to_string()];
-    for fallback in ["ctrl+alt+space", "ctrl+shift+space", "ctrl+alt+c", "alt+shift+c"] {
+    for fallback in [
+        "ctrl+alt+space",
+        "ctrl+shift+space",
+        "ctrl+alt+c",
+        "alt+shift+c",
+    ] {
         if fallback != spec {
             specs.push(fallback.to_string());
         }

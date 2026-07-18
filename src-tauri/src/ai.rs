@@ -91,7 +91,10 @@ pub fn probe_metadata(app: &AppHandle, input: &str) -> String {
 
 fn strip_fences(s: &str) -> String {
     let t = s.trim();
-    let t = t.strip_prefix("```json").or_else(|| t.strip_prefix("```")).unwrap_or(t);
+    let t = t
+        .strip_prefix("```json")
+        .or_else(|| t.strip_prefix("```"))
+        .unwrap_or(t);
     let t = t.strip_suffix("```").unwrap_or(t);
     t.trim().to_string()
 }
@@ -149,9 +152,8 @@ fn complete(
     match settings.provider.as_str() {
         "ollama" => call_ollama(settings, user_msg),
         _ => {
-            let key = api_key.ok_or(
-                "Не задан API-ключ OpenRouter. Добавьте его в настройках.".to_string(),
-            )?;
+            let key = api_key
+                .ok_or("Не задан API-ключ OpenRouter. Добавьте его в настройках.".to_string())?;
             call_openrouter(settings, &key, user_msg)
         }
     }

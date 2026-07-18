@@ -13,10 +13,9 @@ mod win {
 
     /// Расширения, для которых показывать пункт меню (медиафайлы).
     const EXTENSIONS: &[&str] = &[
-        ".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv", ".m4v", ".wmv", ".mpg", ".mpeg",
-        ".ts", ".3gp", ".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma",
-        ".aiff", ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tiff", ".tif",
-        ".heic", ".heif",
+        ".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv", ".m4v", ".wmv", ".mpg", ".mpeg", ".ts",
+        ".3gp", ".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma", ".aiff", ".png",
+        ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tiff", ".tif", ".heic", ".heif",
     ];
 
     fn current_exe() -> Result<String, String> {
@@ -44,7 +43,9 @@ mod win {
     fn set_verb(hkcu: &RegKey, base: &str, exe: &str, arg_token: &str) -> Result<(), String> {
         let shell_path = format!(r"{base}\shell\{VERB}");
         let (shell, _) = hkcu.create_subkey(&shell_path).map_err(|e| e.to_string())?;
-        shell.set_value("", &MENU_TITLE).map_err(|e| e.to_string())?;
+        shell
+            .set_value("", &MENU_TITLE)
+            .map_err(|e| e.to_string())?;
         shell.set_value("Icon", &exe).map_err(|e| e.to_string())?;
         let (cmd, _) = hkcu
             .create_subkey(format!(r"{shell_path}\command"))

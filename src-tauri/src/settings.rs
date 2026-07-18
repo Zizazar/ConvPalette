@@ -83,8 +83,8 @@ fn keyring_user(provider: &str) -> &'static str {
 }
 
 pub fn set_api_key(provider: &str, key: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, keyring_user(provider))
-        .map_err(|e| e.to_string())?;
+    let entry =
+        keyring::Entry::new(KEYRING_SERVICE, keyring_user(provider)).map_err(|e| e.to_string())?;
     if key.is_empty() {
         // Пустой ключ — удалить сохранённый.
         let _ = entry.delete_credential();
@@ -99,7 +99,9 @@ pub fn get_api_key(provider: &str) -> Option<String> {
 }
 
 pub fn has_api_key(provider: &str) -> bool {
-    get_api_key(provider).map(|k| !k.is_empty()).unwrap_or(false)
+    get_api_key(provider)
+        .map(|k| !k.is_empty())
+        .unwrap_or(false)
 }
 
 // ── История запросов/конвертаций ─────────────────────────────────────────────
