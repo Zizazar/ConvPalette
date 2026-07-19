@@ -65,6 +65,18 @@ const ru = {
   h_files: "файл.",
   drop_hint: "Отпустите файлы, чтобы добавить",
   footer_hint: "Esc — закрыть · перетащите файлы в окно",
+  fp_title: "Файлы",
+  fp_folder: "Папка",
+  fp_video_n: "видео",
+  fp_audio_n: "аудио",
+  fp_image_n: "изобр.",
+  fp_other_n: "др. файлов",
+  fp_dirs_n: "папок",
+  fp_empty_folder: "пустая",
+  fp_remove: "Убрать из списка",
+  fp_open_folder: "Открыть в Проводнике",
+  pv_unsupported: "Предпросмотр этого формата не поддерживается.",
+  pv_loading: "Загрузка превью…",
 };
 
 const en: Record<TKey, string> = {
@@ -130,6 +142,18 @@ const en: Record<TKey, string> = {
   h_files: "file(s)",
   drop_hint: "Release to add files",
   footer_hint: "Esc — close · drop files into the window",
+  fp_title: "Files",
+  fp_folder: "Folder",
+  fp_video_n: "video",
+  fp_audio_n: "audio",
+  fp_image_n: "images",
+  fp_other_n: "other",
+  fp_dirs_n: "folders",
+  fp_empty_folder: "empty",
+  fp_remove: "Remove from list",
+  fp_open_folder: "Open in Explorer",
+  pv_unsupported: "Preview is not supported for this format.",
+  pv_loading: "Loading preview…",
 };
 
 export type TKey = keyof typeof ru;

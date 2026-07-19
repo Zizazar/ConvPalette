@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { invoke, convertFileSrc } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
   import { i18n, t, type Lang } from "$lib/i18n.svelte";
   import Icon from "$lib/Icon.svelte";
   import icWand from "@material-symbols/svg-400/outlined/wand_stars.svg?raw";
@@ -13,6 +14,11 @@
   import icPlay from "@material-symbols/svg-400/outlined/play_arrow.svg?raw";
   import icSpinner from "@material-symbols/svg-400/outlined/progress_activity.svg?raw";
   import icKeyboard from "@material-symbols/svg-400/outlined/keyboard.svg?raw";
+  import icFolder from "@material-symbols/svg-400/outlined/folder.svg?raw";
+  import icMovie from "@material-symbols/svg-400/outlined/movie.svg?raw";
+  import icMusic from "@material-symbols/svg-400/outlined/music_note.svg?raw";
+  import icImage from "@material-symbols/svg-400/outlined/image.svg?raw";
+  import icDraft from "@material-symbols/svg-400/outlined/draft.svg?raw";
 
   type Preset = {
     id: string;
@@ -53,6 +59,19 @@
     files: number;
   };
   type View = "list" | "confirm" | "running" | "settings" | "history";
+  type FolderStats = { video: number; audio: number; image: number; other: number; dirs: number };
+  type FileCard = {
+    path: string;
+    name: string;
+    kind: "video" | "audio" | "image" | "other" | "folder";
+    ext: string;
+    size: number;
+    duration: number | null;
+    width: number | null;
+    height: number | null;
+    thumb: string | null;
+    folder: FolderStats | null;
+  };
 
   let context = $state<string[]>([]);
   let recs = $state<Preset[]>([]);
@@ -107,6 +126,17 @@
   // История.
   let history = $state<HistoryEntry[]>([]);
 
+  // Панель файлов слева.
+  let cards = $state<FileCard[]>([]);
+  let cardsLoading = $state(false);
+
+  // Модалка предпросмотра.
+  let preview = $state<FileCard | null>(null);
+  let pvMode = $state<"image" | "video" | "audio" | "none">("none");
+  let pvSrc = $state("");
+  let pvLoading = $state(false);
+  let pvError = $state(false);
+
   let notice = $state("");
   let dragActive = $state(false);
   let capturingHotkey = $state(false);
@@ -157,6 +187,144 @@
 
   const basename = (p: string) => p.replace(/\\/g, "/").split("/").pop() || p;
 
+  // ── Панель файлов: карточки, метаданные, предпросмотр ─────────────────────
+
+  /// Форматы, которые WebView2 рендерит сам; остальным картинкам Rust строит jpg.
+  const IMG_NATIVE = ["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif", "svg", "ico"];
+
+  async function loadCards() {
+    if (context.length === 0) {
+      cards = [];
+      return;
+    }
+    cardsLoading = true;
+    try {
+      cards = await invoke<FileCard[]>("file_cards", { paths: context });
+    } catch {
+      cards = [];
+    } finally {
+      cardsLoading = false;
+    }
+  }
+
+  async function removeFile(path: string) {
+    context = context.filter((p) => p !== path);
+    cards = cards.filter((c) => c.path !== path);
+    recs = await invoke<Preset[]>("get_recommendations", { paths: context });
+  }
+
+  function fmtSize(b: number): string {
+    if (b < 1024) return `${b} B`;
+    const units = ["KB", "MB", "GB", "TB"];
+    let v = b / 1024;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024;
+      i += 1;
+    }
+    return `${v >= 100 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`;
+  }
+
+  function fmtDur(s: number): string {
+    const total = Math.round(s);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const sec = total % 60;
+    const mm = h ? String(m).padStart(2, "0") : String(m);
+    return `${h ? `${h}:` : ""}${mm}:${String(sec).padStart(2, "0")}`;
+  }
+
+  function cardMeta(c: FileCard): string {
+    if (c.kind === "folder") {
+      const f = c.folder;
+      if (!f) return t("fp_folder");
+      const parts: string[] = [];
+      if (f.video) parts.push(`${f.video} ${t("fp_video_n")}`);
+      if (f.audio) parts.push(`${f.audio} ${t("fp_audio_n")}`);
+      if (f.image) parts.push(`${f.image} ${t("fp_image_n")}`);
+      if (f.other) parts.push(`${f.other} ${t("fp_other_n")}`);
+      if (f.dirs) parts.push(`${f.dirs} ${t("fp_dirs_n")}`);
+      return parts.length ? parts.join(" · ") : `${t("fp_folder")} (${t("fp_empty_folder")})`;
+    }
+    const parts = [fmtSize(c.size)];
+    if (c.width && c.height) parts.push(`${c.width}×${c.height}`);
+    if (c.duration) parts.push(fmtDur(c.duration));
+    return parts.join(" · ");
+  }
+
+  function kindIcon(kind: FileCard["kind"]): string {
+    if (kind === "video") return icMovie;
+    if (kind === "audio") return icMusic;
+    if (kind === "image") return icImage;
+    if (kind === "folder") return icFolder;
+    return icDraft;
+  }
+
+  /// Клик по карточке: папка открывается в Проводнике, файл — в модалке превью.
+  async function openPreview(c: FileCard) {
+    if (c.kind === "folder") {
+      try {
+        await invoke("open_path", { path: c.path });
+      } catch (e) {
+        notice = `${e}`;
+      }
+      return;
+    }
+    preview = c;
+    pvError = false;
+    pvLoading = false;
+    pvSrc = "";
+    if (c.kind === "image") {
+      pvMode = "image";
+      if (IMG_NATIVE.includes(c.ext)) {
+        pvSrc = convertFileSrc(c.path);
+      } else {
+        // HEIC/TIFF и прочее WebView не умеет — просим Rust собрать jpg.
+        pvLoading = true;
+        try {
+          pvSrc = convertFileSrc(await invoke<string>("image_preview", { path: c.path }));
+        } catch {
+          pvError = true;
+        } finally {
+          pvLoading = false;
+        }
+      }
+    } else if (c.kind === "video") {
+      pvMode = "video";
+      pvSrc = convertFileSrc(c.path);
+    } else if (c.kind === "audio") {
+      pvMode = "audio";
+      pvSrc = convertFileSrc(c.path);
+    } else {
+      pvMode = "none";
+    }
+  }
+
+  function closePreview() {
+    preview = null;
+    pvSrc = ""; // элемент <video>/<audio> размонтируется — воспроизведение стоп
+  }
+
+  // Окно шире, когда видна панель файлов; уже — когда пусто.
+  const BASE_W = 680;
+  const PANEL_EXTRA = 280;
+  const WIN_H = 480;
+  let lastWide: boolean | null = null;
+  $effect(() => {
+    const wide = context.length > 0;
+    if (wide === lastWide) return;
+    lastWide = wide;
+    (async () => {
+      try {
+        const win = getCurrentWindow();
+        await win.setSize(new LogicalSize(wide ? BASE_W + PANEL_EXTRA : BASE_W, WIN_H));
+        await win.center();
+      } catch {
+        // Вне Tauri (dev в браузере) окна нет.
+      }
+    })();
+  });
+
   // ── Тема и язык ────────────────────────────────────────────────────────────
 
   const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -182,6 +350,7 @@
     view = "list";
     selected = null;
     aiSuggestion = null;
+    loadCards();
   }
 
   /// Добавить в контекст файлы, брошенные перетаскиванием.
@@ -195,6 +364,7 @@
     selected = null;
     aiSuggestion = null;
     notice = "";
+    loadCards();
   }
 
   async function selectPreset(p: Preset) {
@@ -390,6 +560,10 @@
 
   function onKey(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
+    if (preview) {
+      closePreview();
+      return;
+    }
     if (view === "confirm" || view === "settings" || view === "history") {
       view = "list";
       selected = null;
@@ -495,6 +669,55 @@
   });
 </script>
 
+<div class="wrap">
+{#if context.length > 0}
+  <aside class="files-panel" class:pop>
+    <div class="fp-head">
+      <span>{t("fp_title")}</span>
+      <span class="muted">{context.length}</span>
+    </div>
+    <div class="fp-list">
+      {#if cards.length === 0 && cardsLoading}
+        <div class="fp-loading"><Icon svg={icSpinner} size={20} spin /></div>
+      {:else}
+        {#each cards as c (c.path)}
+          <div
+            class="fcard"
+            role="button"
+            tabindex="0"
+            title={c.kind === "folder" ? t("fp_open_folder") : c.name}
+            onclick={() => openPreview(c)}
+            onkeydown={(e) => (e.key === "Enter" || e.key === " ") && openPreview(c)}
+          >
+            <div class="fthumb" class:wave={c.kind === "audio" && c.thumb}>
+              {#if c.thumb}
+                <img src={convertFileSrc(c.thumb)} alt="" loading="lazy" />
+              {:else}
+                <Icon svg={kindIcon(c.kind)} size={22} />
+              {/if}
+            </div>
+            <div class="finfo">
+              <div class="fname">{c.name}</div>
+              <div class="fmeta">{cardMeta(c)}</div>
+            </div>
+            <button
+              class="fremove"
+              title={t("fp_remove")}
+              aria-label={t("fp_remove")}
+              onclick={(e) => {
+                e.stopPropagation();
+                removeFile(c.path);
+              }}
+            >
+              <Icon svg={icClose} size={14} />
+            </button>
+          </div>
+        {/each}
+      {/if}
+    </div>
+  </aside>
+{/if}
+
 <div class="palette" class:drag={dragActive} class:pop>
   <div class="topbar" data-tauri-drag-region>
     <span class="search-icon" data-tauri-drag-region>
@@ -516,11 +739,8 @@
     {#if context.length === 0}
       <span class="muted" data-tauri-drag-region>{t("ctx_empty")}</span>
     {:else}
-      <span class="ctx-count">{context.length} {t("files_n")}:</span>
-      {#each context.slice(0, 4) as path}
-        <span class="chip">{basename(path)}</span>
-      {/each}
-      {#if context.length > 4}<span class="muted">+{context.length - 4}</span>{/if}
+      <!-- Сами файлы теперь в панели слева, здесь только счётчик. -->
+      <span class="ctx-count" data-tauri-drag-region>{context.length} {t("files_n")}</span>
     {/if}
   </div>
 
@@ -734,6 +954,50 @@
   {/if}
 </div>
 
+{#if preview}
+  <!-- Клик по фону закрывает; с клавиатуры — Esc (обработан в onKey). -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="modal" role="presentation" onclick={closePreview}>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div
+      class="modal-card"
+      role="dialog"
+      tabindex="-1"
+      aria-label={preview.name}
+      onclick={(e) => e.stopPropagation()}
+    >
+      <div class="modal-head">
+        <span class="modal-title">{preview.name}</span>
+        <button class="icon-btn" onclick={closePreview} aria-label="×"><Icon svg={icClose} size={15} /></button>
+      </div>
+      <div class="modal-body">
+        {#if pvLoading}
+          <div class="pv-note"><Icon svg={icSpinner} size={18} spin /> {t("pv_loading")}</div>
+        {:else if pvError || pvMode === "none"}
+          {#if preview.thumb}
+            <img class="pv-img" src={convertFileSrc(preview.thumb)} alt="" />
+          {:else}
+            <span class="pv-big-icon"><Icon svg={kindIcon(preview.kind)} size={42} /></span>
+          {/if}
+          <div class="pv-note">{t("pv_unsupported")}</div>
+        {:else if pvMode === "image"}
+          <img class="pv-img" src={pvSrc} alt={preview.name} onerror={() => (pvError = true)} />
+        {:else if pvMode === "video"}
+          <!-- svelte-ignore a11y_media_has_caption -->
+          <video class="pv-video" src={pvSrc} controls autoplay onerror={() => (pvError = true)}></video>
+        {:else if pvMode === "audio"}
+          {#if preview.thumb}
+            <img class="pv-wave" src={convertFileSrc(preview.thumb)} alt="" />
+          {/if}
+          <audio class="pv-audio" src={pvSrc} controls autoplay onerror={() => (pvError = true)}></audio>
+        {/if}
+      </div>
+      <div class="modal-meta">{cardMeta(preview)}{preview.ext ? ` · .${preview.ext}` : ""}</div>
+    </div>
+  </div>
+{/if}
+</div>
+
 <style>
   /* Палитра тем: тёмная — по умолчанию, светлая — через data-theme=light. */
   :global(:root) {
@@ -808,6 +1072,179 @@
     align-items: center;
     justify-content: center;
   }
+  .wrap {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+    font-family: "Segoe UI", Inter, system-ui, sans-serif;
+  }
+
+  /* ── Панель файлов слева ── */
+  .files-panel {
+    width: 264px;
+    flex-shrink: 0;
+    max-height: 460px;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel-bg);
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    font-size: 13px;
+  }
+  .files-panel.pop { animation: pop-in 0.16s ease-out; }
+  .fp-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--divider);
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+  .fp-list {
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .fp-loading {
+    display: flex;
+    justify-content: center;
+    padding: 22px 0;
+    color: var(--text-muted);
+  }
+  .fcard {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--surface-border);
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .fcard:hover, .fcard:focus-visible {
+    background: var(--surface-hover);
+    border-color: var(--accent);
+    outline: none;
+  }
+  .fthumb {
+    width: 54px;
+    height: 44px;
+    border-radius: 7px;
+    overflow: hidden;
+    background: var(--chip-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--text-soft);
+  }
+  .fthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .fthumb.wave img { object-fit: contain; }
+  .finfo { flex: 1; min-width: 0; }
+  .fname {
+    font-weight: 600;
+    font-size: 12.5px;
+    color: var(--text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .fmeta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .fremove {
+    flex-shrink: 0;
+    opacity: 0;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    padding: 3px;
+    border-radius: 6px;
+    transition: opacity 0.12s;
+  }
+  .fcard:hover .fremove, .fcard:focus-within .fremove { opacity: 1; }
+  .fremove:hover { color: var(--text-strong); background: var(--chip-bg); }
+
+  /* ── Модалка предпросмотра ── */
+  .modal {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+  }
+  .modal-card {
+    background: var(--panel-bg);
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    min-width: 340px;
+    max-width: 660px;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: pop-in 0.14s ease-out;
+  }
+  .modal-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--divider);
+  }
+  .modal-title {
+    flex: 1;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .modal-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px;
+    overflow: auto;
+    min-height: 120px;
+  }
+  .pv-img { max-width: 100%; max-height: 310px; border-radius: 8px; object-fit: contain; }
+  .pv-video { max-width: 100%; max-height: 310px; border-radius: 8px; background: #000; }
+  .pv-wave { width: 100%; max-width: 440px; }
+  .pv-audio { width: 100%; min-width: 320px; }
+  .pv-note { color: var(--text-muted); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .pv-big-icon { color: var(--text-muted); }
+  .modal-meta {
+    padding: 8px 12px;
+    border-top: 1px solid var(--divider);
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+
   .palette {
     position: relative;
     width: 640px;
@@ -887,16 +1324,6 @@
     border-bottom: 1px solid var(--divider);
   }
   .ctx-count { color: var(--link); font-weight: 600; }
-  .chip {
-    background: var(--chip-bg);
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 12px;
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .muted { color: var(--text-muted); }
   .banner {
     padding: 8px 14px;

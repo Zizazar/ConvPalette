@@ -1,4 +1,5 @@
 mod ai;
+mod cards;
 mod ffmpeg;
 mod integration;
 mod presets;
@@ -406,6 +407,15 @@ fn hide_palette(app: AppHandle) {
     hide_window(&app);
 }
 
+/// Открыть файл/папку системным способом (клик по карточке папки в панели).
+#[tauri::command]
+fn open_path(app: AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 // ── Точка входа ──────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -448,6 +458,9 @@ pub fn run() {
             ai_command_preview,
             run_ai_conversion,
             hide_palette,
+            open_path,
+            cards::file_cards,
+            cards::image_preview,
             context_menu_status,
             set_context_menu,
             autostart_status,
