@@ -80,17 +80,14 @@ fn probe_media(app: &AppHandle, input: &str) -> MetaTuple {
         ffmpeg::hide_console_cmd(&mut cmd);
         if let Ok(out) = cmd.output() {
             if out.status.success() {
-                if let Ok(v) =
-                    serde_json::from_slice::<serde_json::Value>(&out.stdout)
-                {
+                if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
                     meta.0 = v["format"]["duration"]
                         .as_str()
                         .and_then(|s| s.parse::<f64>().ok())
                         .filter(|d| d.is_finite() && *d > 0.0);
                     if let Some(streams) = v["streams"].as_array() {
                         for s in streams {
-                            if let (Some(w), Some(h)) =
-                                (s["width"].as_u64(), s["height"].as_u64())
+                            if let (Some(w), Some(h)) = (s["width"].as_u64(), s["height"].as_u64())
                             {
                                 meta.1 = Some(w as u32);
                                 meta.2 = Some(h as u32);
@@ -148,7 +145,11 @@ fn make_thumb(app: &AppHandle, input: &str, kind: Category) -> Option<String> {
     let ffmpeg_bin = ffmpeg::resolve_ffmpeg(app)?;
     let dir = thumbs_dir(app)?;
     // Волне аудио нужна прозрачность — png; остальным хватает jpg.
-    let ext = if kind == Category::Audio { "png" } else { "jpg" };
+    let ext = if kind == Category::Audio {
+        "png"
+    } else {
+        "jpg"
+    };
     let out = thumb_file(&dir, input, ext);
     if out.exists() {
         return Some(out.to_string_lossy().to_string());
@@ -163,10 +164,28 @@ fn make_thumb(app: &AppHandle, input: &str, kind: Category) -> Option<String> {
                 if seek {
                     cmd.args(["-ss", "1"]);
                 }
-                cmd.args(["-i", input, "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "4"]);
+                cmd.args([
+                    "-i",
+                    input,
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    "scale=320:-2",
+                    "-q:v",
+                    "4",
+                ]);
             }
             Category::Image => {
-                cmd.args(["-i", input, "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "4"]);
+                cmd.args([
+                    "-i",
+                    input,
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    "scale=320:-2",
+                    "-q:v",
+                    "4",
+                ]);
             }
             Category::Audio => {
                 cmd.args([
