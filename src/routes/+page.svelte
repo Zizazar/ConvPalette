@@ -6,6 +6,8 @@
   import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
   import { i18n, t, type Lang } from "$lib/i18n.svelte";
   import Icon from "$lib/Icon.svelte";
+  import MediaPlayer from "$lib/MediaPlayer.svelte";
+  import ImageViewer from "$lib/ImageViewer.svelte";
   import icWand from "@material-symbols/svg-400/outlined/wand_stars.svg?raw";
   import icSend from "@material-symbols/svg-400/outlined/send.svg?raw";
   import icHistory from "@material-symbols/svg-400/outlined/history.svg?raw";
@@ -981,15 +983,22 @@
           {/if}
           <div class="pv-note">{t("pv_unsupported")}</div>
         {:else if pvMode === "image"}
-          <img class="pv-img" src={pvSrc} alt={preview.name} onerror={() => (pvError = true)} />
+          <ImageViewer src={pvSrc} alt={preview.name} onerror={() => (pvError = true)} />
         {:else if pvMode === "video"}
-          <!-- svelte-ignore a11y_media_has_caption -->
-          <video class="pv-video" src={pvSrc} controls autoplay onerror={() => (pvError = true)}></video>
+          <MediaPlayer
+            src={pvSrc}
+            mode="video"
+            duration={preview.duration}
+            onerror={() => (pvError = true)}
+          />
         {:else if pvMode === "audio"}
-          {#if preview.thumb}
-            <img class="pv-wave" src={convertFileSrc(preview.thumb)} alt="" />
-          {/if}
-          <audio class="pv-audio" src={pvSrc} controls autoplay onerror={() => (pvError = true)}></audio>
+          <MediaPlayer
+            src={pvSrc}
+            mode="audio"
+            wave={preview.thumb ? convertFileSrc(preview.thumb) : null}
+            duration={preview.duration}
+            onerror={() => (pvError = true)}
+          />
         {/if}
       </div>
       <div class="modal-meta">{cardMeta(preview)}{preview.ext ? ` · .${preview.ext}` : ""}</div>
@@ -1198,8 +1207,8 @@
     border: 1px solid var(--panel-border);
     border-radius: 14px;
     box-shadow: var(--shadow);
-    min-width: 340px;
-    max-width: 660px;
+    width: 620px;
+    max-width: 100%;
     max-height: 100%;
     display: flex;
     flex-direction: column;
@@ -1233,9 +1242,6 @@
     min-height: 120px;
   }
   .pv-img { max-width: 100%; max-height: 310px; border-radius: 8px; object-fit: contain; }
-  .pv-video { max-width: 100%; max-height: 310px; border-radius: 8px; background: #000; }
-  .pv-wave { width: 100%; max-width: 440px; }
-  .pv-audio { width: 100%; min-width: 320px; }
   .pv-note { color: var(--text-muted); font-size: 13px; display: flex; align-items: center; gap: 8px; }
   .pv-big-icon { color: var(--text-muted); }
   .modal-meta {

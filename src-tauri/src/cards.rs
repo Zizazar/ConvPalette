@@ -126,6 +126,8 @@ fn thumb_file(dir: &Path, input: &str, ext: &str) -> PathBuf {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     input.hash(&mut h);
     file_mtime_secs(input).hash(&mut h);
+    // Версия параметров генерации: меняется — старый кэш игнорируется.
+    "v2".hash(&mut h);
     dir.join(format!("{:016x}.{ext}", h.finish()))
 }
 
@@ -171,7 +173,9 @@ fn make_thumb(app: &AppHandle, input: &str, kind: Category) -> Option<String> {
                     "-i",
                     input,
                     "-filter_complex",
-                    "showwavespic=s=320x72:colors=0x7c86ff",
+                    // Шире, чем нужно карточке: та же картинка тянется на всю ширину
+                    // плеера в модалке и служит полосой перемотки.
+                    "showwavespic=s=640x96:colors=0x7c86ff",
                     "-frames:v",
                     "1",
                 ]);

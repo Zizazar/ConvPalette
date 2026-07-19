@@ -77,6 +77,11 @@ const ru = {
   fp_open_folder: "Открыть в Проводнике",
   pv_unsupported: "Предпросмотр этого формата не поддерживается.",
   pv_loading: "Загрузка превью…",
+  pv_play: "Воспроизвести",
+  pv_pause: "Пауза",
+  pv_mute: "Выключить звук",
+  pv_unmute: "Включить звук",
+  pv_zoom_hint: "колёсико — масштаб, перетаскивание — сдвиг",
 };
 
 const en: Record<TKey, string> = {
@@ -154,6 +159,11 @@ const en: Record<TKey, string> = {
   fp_open_folder: "Open in Explorer",
   pv_unsupported: "Preview is not supported for this format.",
   pv_loading: "Loading preview…",
+  pv_play: "Play",
+  pv_pause: "Pause",
+  pv_mute: "Mute",
+  pv_unmute: "Unmute",
+  pv_zoom_hint: "wheel to zoom, drag to pan",
 };
 
 export type TKey = keyof typeof ru;
